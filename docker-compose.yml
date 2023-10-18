@@ -1,0 +1,118 @@
+---
+version: "3.9"
+services:
+  rabbitmq:
+    image: rabbitmq:3.12.3-management-alpine
+    container_name: crai-rabbitmq
+    command: /bin/bash -c "rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_stomp
+      rabbitmq_web_stomp; rabbitmq-server"
+    volumes:
+      - ./rabbitmq/data/:/var/lib/rabbitmq/
+      - ./rabbitmq/log/:/var/log/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    ports:
+      - 10006:15672
+      - 5672:5672
+      - 1883:1883
+      - 61613:61613
+      - 15674:15674
+    networks:
+      crai-network:
+        ipv4_address: 172.16.1.2
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+        reservations:
+          cpus: "1"
+          memory: 1g
+  postgres:
+    image: postgres:15.4-alpine
+    container_name: crai-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=userDb
+    ports:
+      - 5432:5432
+    volumes:
+      - ./postgres/db:/var/lib/postgresql/data
+    networks:
+      crai-network:
+        ipv4_address: 172.16.1.3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+        reservations:
+          cpus: "1"
+          memory: 1g
+  minio:
+    image: quay.io/minio/minio:RELEASE.2022-02-18T01-50-10Z
+    container_name: crai-minio
+    volumes:
+      - ./minio/data:/data
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      MINIO_ROOT_USER: minio_user
+      MINIO_ROOT_PASSWORD: minio_password
+      MINIO_ADDRESS: :9000
+      MINIO_CONSOLE_ADDRESS: :9001
+    command: minio server /data
+    networks:
+      crai-network:
+        ipv4_address: 172.16.1.4
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+        reservations:
+          cpus: "0.5"
+          memory: 750m
+  keycloak:
+    image: keycloak/keycloak:22.0
+    container_name: crai-keycloak
+    depends_on:
+      - postgres
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://crai-postgres:5432/openid
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      KC_HOSTNAME: localhost
+    command:
+      - start-dev
+      - --spi-theme-static-max-age=-1
+      - --spi-theme-cache-themes=false
+      - --spi-theme-cache-templates=false
+    volumes:
+      - ./themes/theme/custom:/opt/keycloak/themes/keycloak
+    ports:
+      - 18080:8080
+    networks:
+      crai-network:
+        ipv4_address: 172.16.1.5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 750m
+        reservations:
+          cpus: "0.5"
+          memory: 500m
+networks:
+  crai-network:
+    name: crai-network
+    ipam:
+      config:
+        - subnet: 172.16.1.0/24
+          gateway: 172.16.1.1
